@@ -1,0 +1,10 @@
+﻿.dart_tool
+.git
+.idea
+android
+ios
+windows
+macos
+linux
+test
+flutter-sdk
