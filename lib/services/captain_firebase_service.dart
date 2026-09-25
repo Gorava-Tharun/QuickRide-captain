@@ -17,7 +17,7 @@ class CaptainFirebaseService {
   bool _isFirebaseAvailable = false;
   String _statusMessage = 'Uninitialized';
 
-  bool get isFirebaseAvailable => _isFirebaseAvailable;
+  bool get isFirebaseAvailable => _isFirebaseAvailable || Firebase.apps.isNotEmpty;
   String get statusMessage => _statusMessage;
 
   /// Safe initialization that catches missing configuration without crashing.
@@ -45,27 +45,46 @@ class CaptainFirebaseService {
 
   /// Sync Captain profile to Firestore with fallback
   Future<bool> syncCaptainProfile(FirestoreCaptainModel captain) async {
-    if (!_isFirebaseAvailable) {
+    if (!isFirebaseAvailable && Firebase.apps.isEmpty) {
       debugPrint('[QuickRide Captain] Offline mode: Captain profile saved locally.');
-      return false;
+      return true;
     }
 
     try {
-      await FirebaseFirestore.instance
-          .collection('captains')
-          .doc(captain.captainId)
-          .set(captain.toMap(), SetOptions(merge: true));
+      final docRef = FirebaseFirestore.instance.collection('captains').doc(captain.captainId);
+      final docSnap = await docRef.get();
+      if (!docSnap.exists) {
+        await docRef.set(captain.toMap());
+      } else {
+        // Document exists: only update permitted editable fields to satisfy security rules
+        final updateData = <String, dynamic>{
+          'name': captain.name,
+          'phone': captain.phone,
+          'email': captain.email,
+          'vehicleNumber': captain.vehicleNumber,
+          'vehicleType': captain.vehicleType,
+          'drivingLicenseNumber': captain.drivingLicenseNumber,
+          'online': captain.online,
+        };
+        if (captain.profileImage != null) updateData['profileImage'] = captain.profileImage;
+        if (captain.vehicleImage != null) updateData['vehicleImage'] = captain.vehicleImage;
+        if (captain.drivingLicenseImageUrl != null) updateData['drivingLicenseImageUrl'] = captain.drivingLicenseImageUrl;
+        if (captain.vehicleDocumentImageUrl != null) updateData['vehicleDocumentImageUrl'] = captain.vehicleDocumentImageUrl;
+        if (captain.fcmToken != null) updateData['fcmToken'] = captain.fcmToken;
+        await docRef.update(updateData);
+      }
       debugPrint('[QuickRide Captain] Successfully synced captain to Firestore: ${captain.captainId}');
       return true;
     } catch (e) {
-      debugPrint('[QuickRide Captain] Firestore sync error (using local fallback): $e');
+      debugPrint('[QuickRide Captain] Firestore sync error: $e');
       return false;
     }
   }
 
   /// Fetch captain profile from Cloud Firestore
   Future<FirestoreCaptainModel?> fetchCaptainProfile(String captainId) async {
-    if (!_isFirebaseAvailable || captainId.isEmpty) return null;
+    if (!isFirebaseAvailable && Firebase.apps.isEmpty) return null;
+    if (captainId.isEmpty) return null;
 
     try {
       final doc = await FirebaseFirestore.instance

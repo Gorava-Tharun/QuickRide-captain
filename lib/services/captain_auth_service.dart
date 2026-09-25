@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/captain_models.dart';
 import '../models/firestore_models.dart';
@@ -73,23 +74,34 @@ class CaptainAuthService {
 
     String captainUid = 'CPT-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
 
-    try {
-      final userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: cleanEmail,
-        password: password,
-      );
-      if (userCred.user != null) {
-        captainUid = userCred.user!.uid;
-        await userCred.user!.updateDisplayName(name.trim()).catchError((_) {});
+    if (Firebase.apps.isNotEmpty) {
+      try {
+        final userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: cleanEmail,
+          password: password,
+        );
+        if (userCred.user != null) {
+          captainUid = userCred.user!.uid;
+          await userCred.user!.updateDisplayName(name.trim()).catchError((_) {});
+        } else {
+          return {
+            'success': false,
+            'message': 'Failed to create captain account: No user credential returned.',
+          };
+        }
+      } on FirebaseAuthException catch (e) {
+        debugPrint('[CaptainAuthService] Firebase Auth registration error: ${e.code}');
+        return {
+          'success': false,
+          'message': e.message ?? 'Registration failed. Please try again.',
+        };
+      } catch (e) {
+        debugPrint('[CaptainAuthService] Firebase registration error: $e');
+        return {
+          'success': false,
+          'message': 'Registration failed: ${e.toString().replaceAll("Exception: ", "")}',
+        };
       }
-    } on FirebaseAuthException catch (e) {
-      debugPrint('[CaptainAuthService] Firebase Auth registration error: ${e.code}');
-      return {
-        'success': false,
-        'message': e.message ?? 'Registration failed. Please try again.',
-      };
-    } catch (e) {
-      debugPrint('[CaptainAuthService] Firebase offline/fallback registration: $e');
     }
 
     final now = DateTime.now();
@@ -115,8 +127,8 @@ class CaptainAuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_accountsKey, accounts.map((a) => a.toJson()).toList());
 
-    // Sync to Firestore in background
-    await CaptainFirebaseService().syncCaptainProfile(
+    // Sync to Firestore
+    final synced = await CaptainFirebaseService().syncCaptainProfile(
       FirestoreCaptainModel(
         captainId: newCaptain.id,
         name: newCaptain.name,
@@ -133,6 +145,13 @@ class CaptainAuthService {
         createdAt: now,
       ),
     );
+
+    if (!synced && Firebase.apps.isNotEmpty) {
+      return {
+        'success': false,
+        'message': 'Failed to save captain profile to Cloud Firestore. Please check your connection.',
+      };
+    }
 
     return {
       'success': true,
@@ -192,7 +211,13 @@ class CaptainAuthService {
           'message': e.message ?? 'Login failed. Please check your credentials.',
         };
       } catch (e) {
-        debugPrint('[CaptainAuthService] Firebase login fallback: $e');
+        debugPrint('[CaptainAuthService] Firebase login error: $e');
+        if (Firebase.apps.isNotEmpty) {
+          return {
+            'success': false,
+            'message': 'Login failed: ${e.toString().replaceAll("Exception: ", "")}',
+          };
+        }
       }
     }
 
