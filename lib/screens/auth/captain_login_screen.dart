@@ -19,7 +19,7 @@ class CaptainLoginScreen extends StatefulWidget {
 
 class _CaptainLoginScreenState extends State<CaptainLoginScreen> {
   late final TextEditingController _phoneController;
-  final _passwordController = TextEditingController(text: 'password123');
+  final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
   String? _errorMessage;
@@ -27,7 +27,7 @@ class _CaptainLoginScreenState extends State<CaptainLoginScreen> {
   @override
   void initState() {
     super.initState();
-    _phoneController = TextEditingController(text: widget.prefilledPhone ?? '9876543210');
+    _phoneController = TextEditingController(text: widget.prefilledPhone ?? '');
   }
 
   @override

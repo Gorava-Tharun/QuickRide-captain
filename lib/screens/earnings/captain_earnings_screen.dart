@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../models/captain_models.dart';
@@ -20,34 +21,6 @@ class CaptainEarningsScreen extends StatelessWidget {
           appBar: AppBar(
             backgroundColor: AppColors.surfaceDark,
             title: const Text('Captain Earnings', style: TextStyle(fontWeight: FontWeight.w800)),
-            actions: [
-              if (isEmpty)
-                TextButton.icon(
-                  icon: const Icon(Icons.bolt_rounded, size: 18, color: AppColors.primary),
-                  label: const Text('Load Demo', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700, fontSize: 12)),
-                  onPressed: () async {
-                    await service.seedDemoCompletedRides();
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Sample demo rides loaded.')),
-                      );
-                    }
-                  },
-                )
-              else
-                IconButton(
-                  tooltip: 'Clear Demo Data',
-                  icon: const Icon(Icons.refresh_rounded, size: 20, color: AppColors.textSecondaryDark),
-                  onPressed: () async {
-                    await service.clearCompletedRides();
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Ride history & earnings reset.')),
-                      );
-                    }
-                  },
-                ),
-            ],
           ),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(AppDimensions.space16),
@@ -100,28 +73,30 @@ class CaptainEarningsScreen extends StatelessWidget {
                 height: 1.4,
               ),
             ),
-            const SizedBox(height: 28),
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.primary,
-                side: const BorderSide(color: AppColors.primary, width: 1.2),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            if (kDebugMode) ...[
+              const SizedBox(height: 28),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primary, width: 1.2),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.add_chart_rounded, size: 18),
+                label: const Text(
+                  'Load Sample Demo Rides',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                ),
+                onPressed: () async {
+                  await service.seedDemoCompletedRides();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Sample demo rides loaded.')),
+                    );
+                  }
+                },
               ),
-              icon: const Icon(Icons.add_chart_rounded, size: 18),
-              label: const Text(
-                'Load Sample Demo Rides',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-              ),
-              onPressed: () async {
-                await service.seedDemoCompletedRides();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Sample demo rides loaded.')),
-                  );
-                }
-              },
-            ),
+            ],
           ],
         ),
       ),

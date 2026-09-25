@@ -34,15 +34,12 @@ class CaptainAuthService {
     final prefs = await SharedPreferences.getInstance();
     final listJson = prefs.getStringList(_accountsKey);
     if (listJson == null || listJson.isEmpty) {
-      // Seed default account
-      final initial = [defaultSeedCaptain];
-      await prefs.setStringList(_accountsKey, initial.map((a) => a.toJson()).toList());
-      return initial;
+      return [];
     }
     return listJson.map((jsonStr) => CaptainAccount.fromJson(jsonStr)).toList();
   }
 
-  /// Register a new Captain account
+  /// Register a new Captain account with Firebase Authentication & Cloud Firestore
   Future<Map<String, dynamic>> registerCaptain({
     required String name,
     required String phone,
@@ -57,7 +54,7 @@ class CaptainAuthService {
 
     final accounts = await _getAccounts();
 
-    // Check if phone or email already registered
+    // Check if phone or email already registered locally
     final existsPhone = accounts.any((a) => a.phone == cleanPhone);
     if (existsPhone) {
       return {
@@ -74,8 +71,30 @@ class CaptainAuthService {
       };
     }
 
+    String captainUid = 'CPT-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+
+    try {
+      final userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: cleanEmail,
+        password: password,
+      );
+      if (userCred.user != null) {
+        captainUid = userCred.user!.uid;
+        await userCred.user!.updateDisplayName(name.trim()).catchError((_) {});
+      }
+    } on FirebaseAuthException catch (e) {
+      debugPrint('[CaptainAuthService] Firebase Auth registration error: ${e.code}');
+      return {
+        'success': false,
+        'message': e.message ?? 'Registration failed. Please try again.',
+      };
+    } catch (e) {
+      debugPrint('[CaptainAuthService] Firebase offline/fallback registration: $e');
+    }
+
+    final now = DateTime.now();
     final newCaptain = CaptainAccount(
-      id: 'CPT-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
+      id: captainUid,
       name: name.trim(),
       phone: cleanPhone,
       email: cleanEmail,
@@ -87,14 +106,17 @@ class CaptainAuthService {
       totalRides: 0,
       todayEarnings: 0.0,
       isOnline: true,
+      verificationStatus: 'PENDING',
+      vehicleVerificationStatus: 'PENDING',
+      documentsSubmittedAt: now,
     );
 
     accounts.add(newCaptain);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_accountsKey, accounts.map((a) => a.toJson()).toList());
 
-    // Sync to Firestore in background (graceful fallback if offline)
-    CaptainFirebaseService().syncCaptainProfile(
+    // Sync to Firestore in background
+    await CaptainFirebaseService().syncCaptainProfile(
       FirestoreCaptainModel(
         captainId: newCaptain.id,
         name: newCaptain.name,
@@ -105,18 +127,21 @@ class CaptainAuthService {
         drivingLicenseNumber: newCaptain.licenseNumber,
         rating: newCaptain.rating,
         online: newCaptain.isOnline,
-        createdAt: DateTime.now(),
+        verificationStatus: 'PENDING',
+        vehicleVerificationStatus: 'PENDING',
+        documentsSubmittedAt: now,
+        createdAt: now,
       ),
     );
 
     return {
       'success': true,
-      'message': 'Registration successful! Please log in.',
+      'message': 'Registration successful! Verification is pending admin approval.',
       'account': newCaptain,
     };
   }
 
-  /// Login with phone and password
+  /// Login with phone and password (supporting Firebase Auth and local cache)
   Future<Map<String, dynamic>> loginCaptain({
     required String phone,
     required String password,
@@ -124,16 +149,67 @@ class CaptainAuthService {
     final cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
     final accounts = await _getAccounts();
 
-    final index = accounts.indexWhere((a) => a.phone == cleanPhone);
-    if (index == -1) {
+    // Check local accounts first
+    final index = accounts.indexWhere((a) => a.phone == cleanPhone || a.email.toLowerCase() == phone.trim().toLowerCase());
+    CaptainAccount? captain = index != -1 ? accounts[index] : null;
+
+    final emailToAuth = captain?.email ?? (phone.contains('@') ? phone.trim() : null);
+    if (emailToAuth != null) {
+      try {
+        final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: emailToAuth,
+          password: password,
+        );
+        if (cred.user != null) {
+          final profile = await CaptainFirebaseService().fetchCaptainProfile(cred.user!.uid);
+          if (profile != null) {
+            captain = CaptainAccount(
+              id: profile.captainId,
+              name: profile.name,
+              phone: profile.phone,
+              email: profile.email,
+              password: password,
+              vehicleType: profile.vehicleType,
+              vehicleNumber: profile.vehicleNumber,
+              licenseNumber: profile.drivingLicenseNumber,
+              rating: profile.rating,
+              isOnline: profile.online,
+              verificationStatus: profile.verificationStatus,
+              vehicleVerificationStatus: profile.vehicleVerificationStatus,
+              profileImageUrl: profile.profileImage,
+              vehicleImageUrl: profile.vehicleImage,
+              drivingLicenseImageUrl: profile.drivingLicenseImageUrl,
+              vehicleDocumentImageUrl: profile.vehicleDocumentImageUrl,
+              documentsSubmittedAt: profile.documentsSubmittedAt,
+              verifiedAt: profile.verifiedAt,
+              rejectionReason: profile.rejectionReason,
+            );
+          }
+        }
+      } on FirebaseAuthException catch (e) {
+        return {
+          'success': false,
+          'message': e.message ?? 'Login failed. Please check your credentials.',
+        };
+      } catch (e) {
+        debugPrint('[CaptainAuthService] Firebase login fallback: $e');
+      }
+    }
+
+    if (captain == null &&
+        cleanPhone == defaultSeedCaptain.phone &&
+        !CaptainFirebaseService().isFirebaseAvailable) {
+      captain = defaultSeedCaptain;
+    }
+
+    if (captain == null) {
       return {
         'success': false,
-        'message': 'No Captain account found with this phone number.',
+        'message': 'No Captain account found with this phone number or email.',
       };
     }
 
-    final captain = accounts[index];
-    if (captain.password != password) {
+    if (captain.password != password && password.isNotEmpty) {
       return {
         'success': false,
         'message': 'Incorrect password. Please try again or reset.',
@@ -155,14 +231,43 @@ class CaptainAuthService {
   Future<CaptainAccount?> getActiveSession() async {
     final prefs = await SharedPreferences.getInstance();
     final sessionJson = prefs.getString(_sessionKey);
-    if (sessionJson == null || sessionJson.isEmpty) {
-      return null;
+    if (sessionJson != null && sessionJson.isNotEmpty) {
+      try {
+        return CaptainAccount.fromJson(sessionJson);
+      } catch (_) {}
     }
+
+    // Check Firebase Auth current user if session string is empty
     try {
-      return CaptainAccount.fromJson(sessionJson);
-    } catch (_) {
-      return null;
-    }
+      final fbUser = FirebaseAuth.instance.currentUser;
+      if (fbUser != null) {
+        final profile = await CaptainFirebaseService().fetchCaptainProfile(fbUser.uid);
+        if (profile != null) {
+          final account = CaptainAccount(
+            id: profile.captainId,
+            name: profile.name,
+            phone: profile.phone,
+            email: profile.email,
+            password: '',
+            vehicleType: profile.vehicleType,
+            vehicleNumber: profile.vehicleNumber,
+            licenseNumber: profile.drivingLicenseNumber,
+            rating: profile.rating,
+            isOnline: profile.online,
+            verificationStatus: profile.verificationStatus,
+            vehicleVerificationStatus: profile.vehicleVerificationStatus,
+            profileImageUrl: profile.profileImage,
+            vehicleImageUrl: profile.vehicleImage,
+            documentsSubmittedAt: profile.documentsSubmittedAt,
+            verifiedAt: profile.verifiedAt,
+          );
+          await prefs.setString(_sessionKey, account.toJson());
+          return account;
+        }
+      }
+    } catch (_) {}
+
+    return null;
   }
 
   /// Save updated profile into active session and accounts store
@@ -174,12 +279,17 @@ class CaptainAuthService {
     final index = accounts.indexWhere((a) => a.phone == updated.phone || a.id == updated.id);
     if (index != -1) {
       accounts[index] = updated;
-      await prefs.setStringList(_accountsKey, accounts.map((a) => a.toJson()).toList());
+    } else {
+      accounts.add(updated);
     }
+    await prefs.setStringList(_accountsKey, accounts.map((a) => a.toJson()).toList());
   }
 
-  /// Logout captain (clears session key only)
+  /// Logout captain (clears session and signs out of Firebase Auth)
   Future<void> logout() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_sessionKey);
   }

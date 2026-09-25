@@ -4,6 +4,7 @@ import '../../core/constants/app_dimensions.dart';
 import '../../models/captain_models.dart';
 import '../screens/safety/captain_safety_center_screen.dart';
 import '../screens/chat/captain_chat_screen.dart';
+import '../services/captain_state_service.dart';
 
 class AcceptedRideCard extends StatelessWidget {
   final RideRequestItem request;
@@ -278,8 +279,10 @@ class AcceptedRideCard extends StatelessWidget {
                       MaterialPageRoute<void>(
                         builder: (_) => CaptainChatScreen(
                           rideId: request.id,
-                          currentCaptainId: 'captain_seed_01',
-                          currentCaptainName: 'Captain',
+                          currentCaptainId: CaptainStateService().account.id,
+                          currentCaptainName: CaptainStateService().account.name.isNotEmpty
+                              ? CaptainStateService().account.name
+                              : 'Captain',
                           passengerId: request.passengerId,
                           passengerName: request.passengerName,
                           passengerPhone: request.passengerPhone,

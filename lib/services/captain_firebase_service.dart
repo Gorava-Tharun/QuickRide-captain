@@ -10,49 +10,9 @@ class CaptainFirebaseService {
   factory CaptainFirebaseService() => _instance;
   CaptainFirebaseService._internal();
 
-  static final List<FirestoreComplaintModel> _localComplaints = [
-    FirestoreComplaintModel(
-      complaintId: 'CPT-1001',
-      captainId: 'captain_seed_01',
-      complainantRole: 'CAPTAIN',
-      complainantName: 'Vikram Singh',
-      complainantPhone: '+91 98765 43210',
-      category: 'PAYMENT',
-      subject: 'Weekly Incentive Calculation',
-      description: 'The peak hour surge bonus for 10 rides completed on Sunday was not reflected in the payout statement.',
-      rideId: 'DEMO-101',
-      priority: 'NORMAL',
-      status: 'RESOLVED',
-      adminNotes: 'Verified trip logs. Added incentive adjustment of ₹250.',
-      resolutionSummary: 'Bonus has been credited to your wallet balance and will be settled in Monday batch.',
-      createdAt: DateTime.now().subtract(const Duration(days: 2)),
-      updatedAt: DateTime.now().subtract(const Duration(days: 1)),
-      resolvedAt: DateTime.now().subtract(const Duration(days: 1)),
-    ),
-  ];
+  static final List<FirestoreComplaintModel> _localComplaints = [];
 
-  static final Map<String, List<FirestoreComplaintReplyModel>> _localReplies = {
-    'CPT-1001': [
-      FirestoreComplaintReplyModel(
-        replyId: 'rep_cpt_01',
-        complaintId: 'CPT-1001',
-        senderId: 'captain_seed_01',
-        senderName: 'Vikram Singh',
-        senderRole: 'CAPTAIN',
-        message: 'Hello, my Sunday incentive of ₹250 for 10 rides is missing from the payout statement.',
-        createdAt: DateTime.now().subtract(const Duration(days: 2)),
-      ),
-      FirestoreComplaintReplyModel(
-        replyId: 'rep_adm_01',
-        complaintId: 'CPT-1001',
-        senderId: 'admin_support_01',
-        senderName: 'QuickRide Support',
-        senderRole: 'ADMIN',
-        message: 'Hi Vikram, we have audited your Sunday rides and credited the ₹250 adjustment. It will be settled in Monday batch.',
-        createdAt: DateTime.now().subtract(const Duration(days: 1)),
-      ),
-    ],
-  };
+  static final Map<String, List<FirestoreComplaintReplyModel>> _localReplies = {};
 
   bool _isFirebaseAvailable = false;
   String _statusMessage = 'Uninitialized';
@@ -774,16 +734,7 @@ class CaptainFirebaseService {
   // ==========================================================================
 
   final List<FirestoreEmergencyIncidentModel> _localEmergencies = [];
-  final List<FirestoreEmergencyContactModel> _localEmergencyContacts = [
-    FirestoreEmergencyContactModel(
-      contactId: 'contact_cpt_1',
-      ownerId: 'captain_seed_01',
-      name: 'Captain Helpline / Family',
-      phone: '9876543210',
-      relationship: 'Family',
-      createdAt: DateTime.now().subtract(const Duration(days: 10)),
-    ),
-  ];
+  final List<FirestoreEmergencyContactModel> _localEmergencyContacts = [];
 
   /// Create a new emergency incident
   Future<bool> createEmergencyIncident(FirestoreEmergencyIncidentModel emergency) async {
@@ -845,7 +796,7 @@ class CaptainFirebaseService {
   Stream<FirestoreEmergencyIncidentModel?> streamActiveEmergency(String captainId) {
     if (!_isFirebaseAvailable || captainId.isEmpty) {
       final active = _localEmergencies.cast<FirestoreEmergencyIncidentModel?>().firstWhere(
-        (e) => (e?.captainId == captainId || captainId == 'captain_seed_01') && e?.isActive == true,
+        (e) => e?.captainId == captainId && e?.isActive == true,
         orElse: () => null,
       );
       return Stream.value(active);
@@ -867,7 +818,7 @@ class CaptainFirebaseService {
   Future<FirestoreEmergencyIncidentModel?> fetchActiveEmergency(String captainId) async {
     if (!_isFirebaseAvailable || captainId.isEmpty) {
       return _localEmergencies.cast<FirestoreEmergencyIncidentModel?>().firstWhere(
-        (e) => (e?.captainId == captainId || captainId == 'captain_seed_01') && e?.isActive == true,
+        (e) => e?.captainId == captainId && e?.isActive == true,
         orElse: () => null,
       );
     }
@@ -888,7 +839,7 @@ class CaptainFirebaseService {
     }
 
     return _localEmergencies.cast<FirestoreEmergencyIncidentModel?>().firstWhere(
-      (e) => (e?.captainId == captainId || captainId == 'captain_seed_01') && e?.isActive == true,
+      (e) => e?.captainId == captainId && e?.isActive == true,
       orElse: () => null,
     );
   }

@@ -31,21 +31,6 @@ class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
           appBar: AppBar(
             backgroundColor: AppColors.surfaceDark,
             title: const Text('Ride History', style: TextStyle(fontWeight: FontWeight.w800)),
-            actions: [
-              if (!hasAnyRides)
-                TextButton.icon(
-                  icon: const Icon(Icons.bolt_rounded, size: 18, color: AppColors.primary),
-                  label: const Text('Load Demo', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700, fontSize: 12)),
-                  onPressed: () async {
-                    await service.seedDemoCompletedRides();
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Sample demo rides loaded.')),
-                      );
-                    }
-                  },
-                ),
-            ],
           ),
           body: Column(
             children: [
@@ -192,27 +177,6 @@ class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 13, color: AppColors.textSecondaryDark),
             ),
-            if (!hasAnyRides) ...[
-              const SizedBox(height: 20),
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.primary,
-                  side: const BorderSide(color: AppColors.primary, width: 1.2),
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                icon: const Icon(Icons.bolt_rounded, size: 18),
-                label: const Text('Load Sample Demo Rides', style: TextStyle(fontWeight: FontWeight.w800)),
-                onPressed: () async {
-                  await service.seedDemoCompletedRides();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Sample demo rides loaded.')),
-                    );
-                  }
-                },
-              ),
-            ],
           ],
         ),
       ),
