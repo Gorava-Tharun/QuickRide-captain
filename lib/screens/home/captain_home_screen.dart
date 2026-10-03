@@ -328,9 +328,33 @@ class _CaptainHomeScreenState extends State<CaptainHomeScreen> {
     return {};
   }
 
-  void _handleAcceptRide(CaptainStateService service) {
-    final success = service.acceptCurrentRequest();
-    if (!success) return; // Prevent duplicate acceptance
+  void _handleAcceptRide(CaptainStateService service) async {
+    final success = await service.acceptCurrentRequest();
+    if (!mounted) return;
+
+    if (!success) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.amberAccent),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Ride was already accepted by another captain.',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.surfaceDark,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
 
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(

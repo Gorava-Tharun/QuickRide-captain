@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../models/captain_models.dart';
@@ -67,11 +67,11 @@ class RideRequestCard extends StatelessWidget {
                       border: Border.all(color: AppColors.borderDark),
                     ),
                     child: const Text(
-                      'DEMO',
+                      'REAL-TIME',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textSecondaryDark,
+                        color: AppColors.primary,
                       ),
                     ),
                   ),

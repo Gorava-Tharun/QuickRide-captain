@@ -368,14 +368,18 @@ class CaptainStateService extends ChangeNotifier {
     final fb = CaptainFirebaseService();
     if (!fb.isFirebaseAvailable) return;
 
-    _requestSubscription =
-        fb.streamAssignedRequests(_account.id).listen((rides) {
+    _requestSubscription = fb
+        .streamPendingRequests(
+          captainId: _account.id,
+          vehicleType: _account.vehicleType,
+        )
+        .listen((rides) {
       if (rides.isNotEmpty && _rideState == CaptainRideState.idle && isOnline) {
         final ride = rides.first;
         _currentRequest = RideRequestItem(
           id: ride.rideId,
           passengerId: ride.userId,
-          passengerName: ride.userName,
+          passengerName: ride.userName.isNotEmpty ? ride.userName : 'Rider',
           passengerPhone: '+91 98450 77123',
           passengerRating: 4.85,
           pickupAddress: ride.pickup,
@@ -388,7 +392,7 @@ class CaptainStateService extends ChangeNotifier {
           estimatedMinutes: ride.estimatedTime,
           vehicleType: ride.vehicleType,
           estimatedFare: ride.fare,
-          paymentMode: 'Cash / UPI',
+          paymentMode: ride.paymentMethod == 'online' ? 'Online / UPI' : 'Cash / UPI',
         );
         _requestSecondsRemaining = 30;
         _rideState = CaptainRideState.requestReceived;
@@ -399,6 +403,12 @@ class CaptainStateService extends ChangeNotifier {
             payload: '${ride.rideId}|NEW_RIDE_REQUEST',
           );
         }
+        notifyListeners();
+      } else if (rides.isEmpty && _rideState == CaptainRideState.requestReceived) {
+        // Pending ride was taken by another captain or cancelled by rider
+        _currentRequest = null;
+        _requestSecondsRemaining = 0;
+        _rideState = CaptainRideState.idle;
         notifyListeners();
       }
     });
@@ -646,21 +656,34 @@ class CaptainStateService extends ChangeNotifier {
     }
   }
 
-  /// Accept incoming ride request (Transitions to ACCEPTED)
-  bool acceptCurrentRequest() {
+  /// Accept incoming ride request (Transitions to ACCEPTED via atomic Firestore check)
+  Future<bool> acceptCurrentRequest() async {
     if (_rideState == CaptainRideState.requestReceived && _currentRequest != null) {
-      final reqId = _currentRequest!.id;
-      _rideState = CaptainRideState.accepted;
+      final req = _currentRequest!;
+      final reqId = req.id;
       _requestSecondsRemaining = 0; // stop countdown
-      _startActiveGpsTracking();
-      _startActiveRideSync(reqId);
-      CaptainFirebaseService().acceptRide(
+
+      // Atomic Firestore acceptance
+      final success = await CaptainFirebaseService().acceptRide(
         reqId,
         captainId: _account.id,
-        userId: _currentRequest?.passengerName,
+        userId: req.passengerId.isNotEmpty ? req.passengerId : req.passengerName,
       );
-      notifyListeners();
-      return true;
+
+      if (success) {
+        _rideState = CaptainRideState.accepted;
+        _startActiveGpsTracking();
+        _startActiveRideSync(reqId);
+        notifyListeners();
+        return true;
+      } else {
+        // Concurrency: already accepted by another captain or cancelled
+        _currentRequest = null;
+        _rideState = CaptainRideState.idle;
+        _lastCancellationNotice = 'Ride was already accepted by another captain.';
+        notifyListeners();
+        return false;
+      }
     }
     return false; // prevent duplicate acceptance
   }

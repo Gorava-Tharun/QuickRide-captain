@@ -159,8 +159,56 @@ class CaptainFirebaseService {
     });
   }
 
-  /// Accept an assigned ride request in Cloud Firestore using atomic transaction (Step 44)
-  Future<bool> acceptRide(String rideId, {String? captainId, String? userId}) async {
+  /// Stream pending ride requests matching captain's vehicle type and not rejected by this captain
+  Stream<List<SharedRideModel>> streamPendingRequests({
+    required String captainId,
+    required String vehicleType,
+  }) {
+    if (!_isFirebaseAvailable) {
+      return const Stream.empty();
+    }
+
+    return FirebaseFirestore.instance
+        .collection('rides')
+        .where('status', isEqualTo: SharedRideStatus.requested.firestoreValue)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs
+          .map((doc) => SharedRideModel.fromMap(doc.data(), id: doc.id))
+          .where((ride) {
+            // Must not have been rejected by this captain
+            if (ride.rejectedCaptains.contains(captainId)) {
+              return false;
+            }
+
+            // Must be unassigned or assigned directly to this captain
+            if (ride.captainId != null && ride.captainId!.isNotEmpty && ride.captainId != captainId) {
+              return false;
+            }
+
+            // Vehicle type matching:
+            final capType = vehicleType.trim().toLowerCase();
+            final reqType = ride.vehicleType.trim().toLowerCase();
+            if (capType.isNotEmpty && reqType.isNotEmpty) {
+              final isBike = capType.contains('bike') && reqType.contains('bike');
+              final isAuto = capType.contains('auto') && reqType.contains('auto');
+              final isCar = (capType.contains('car') || capType.contains('cab')) &&
+                  (reqType.contains('car') || reqType.contains('cab'));
+              final isDirectMatch = capType.contains(reqType) || reqType.contains(capType);
+
+              if (!isBike && !isAuto && !isCar && !isDirectMatch) {
+                return false;
+              }
+            }
+
+            return true;
+          })
+          .toList();
+    });
+  }
+
+  /// Accept an assigned or pending ride request in Cloud Firestore using atomic transaction
+  Future<bool> acceptRide(String rideId, {required String captainId, String? userId}) async {
     if (!_isFirebaseAvailable) {
       debugPrint('[QuickRide Captain] Offline mode: Ride $rideId accepted locally.');
       return true;
@@ -179,6 +227,7 @@ class CaptainFirebaseService {
 
         final data = snapshot.data() ?? {};
         final currentStatus = data['status'] as String?;
+        final currentCaptainId = data['captainId'] as String?;
 
         // Only allow transition from REQUESTED
         if (currentStatus != SharedRideStatus.requested.firestoreValue) {
@@ -186,13 +235,17 @@ class CaptainFirebaseService {
           return false;
         }
 
+        // Only allow if unassigned or already assigned to this captain
+        if (currentCaptainId != null && currentCaptainId.isNotEmpty && currentCaptainId != captainId) {
+          debugPrint('[QuickRide Captain] Ride $rideId already claimed by captain $currentCaptainId');
+          return false;
+        }
+
         final updateData = <String, dynamic>{
           'status': SharedRideStatus.accepted.firestoreValue,
           'acceptedAt': DateTime.now().toIso8601String(),
+          'captainId': captainId,
         };
-        if (captainId != null) {
-          updateData['captainId'] = captainId;
-        }
 
         transaction.update(rideDocRef, updateData);
         return true;
@@ -200,20 +253,19 @@ class CaptainFirebaseService {
 
       if (!success) return false;
 
-      if (captainId != null) {
-        final captainUpdates = <String, dynamic>{
-          'activeRideId': rideId,
-        };
-        if (userId != null) {
-          captainUpdates['currentRiderId'] = userId;
-        }
-        await FirebaseFirestore.instance
-            .collection('captains')
-            .doc(captainId)
-            .update(captainUpdates);
+      // Update captain doc with active ride reference
+      final captainUpdates = <String, dynamic>{
+        'activeRideId': rideId,
+      };
+      if (userId != null && userId.isNotEmpty) {
+        captainUpdates['currentRiderId'] = userId;
       }
+      await FirebaseFirestore.instance
+          .collection('captains')
+          .doc(captainId)
+          .update(captainUpdates);
 
-      debugPrint('[QuickRide Captain] Ride $rideId accepted atomically in Firestore');
+      debugPrint('[QuickRide Captain] Ride $rideId accepted atomically in Firestore by $captainId');
       return true;
     } catch (e) {
       debugPrint('[QuickRide Captain] Error accepting ride: $e');
@@ -221,7 +273,7 @@ class CaptainFirebaseService {
     }
   }
 
-  /// Reject an assigned ride request in Cloud Firestore
+  /// Reject an assigned or pending ride request in Cloud Firestore
   Future<bool> rejectRide(String rideId, String captainId) async {
     if (!_isFirebaseAvailable) {
       debugPrint('[QuickRide Captain] Offline mode: Ride $rideId rejected locally.');
@@ -229,10 +281,19 @@ class CaptainFirebaseService {
     }
 
     try {
-      await FirebaseFirestore.instance.collection('rides').doc(rideId).update({
-        'captainId': null,
+      final rideDocRef = FirebaseFirestore.instance.collection('rides').doc(rideId);
+      final docSnap = await rideDocRef.get();
+      if (!docSnap.exists) return false;
+
+      final data = docSnap.data() ?? {};
+      final updateData = <String, dynamic>{
         'rejectedCaptains': FieldValue.arrayUnion([captainId]),
-      });
+      };
+      if (data['captainId'] == captainId) {
+        updateData['captainId'] = null;
+      }
+
+      await rideDocRef.update(updateData);
       debugPrint('[QuickRide Captain] Ride $rideId rejected by $captainId in Firestore');
       return true;
     } catch (e) {
