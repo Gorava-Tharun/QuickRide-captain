@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/captain_models.dart';
 import '../models/firestore_models.dart';
 import 'captain_firebase_service.dart';
@@ -172,8 +173,26 @@ class CaptainAuthService {
     final index = accounts.indexWhere((a) => a.phone == cleanPhone || a.email.toLowerCase() == phone.trim().toLowerCase());
     CaptainAccount? captain = index != -1 ? accounts[index] : null;
 
-    final emailToAuth = captain?.email ?? (phone.contains('@') ? phone.trim() : null);
-    if (emailToAuth != null) {
+    String? emailToAuth = captain?.email ?? (phone.contains('@') ? phone.trim() : null);
+
+    // If email is not in local cache and Firebase is available, lookup captain document in Firestore by phone
+    if (emailToAuth == null && cleanPhone.length >= 10 && Firebase.apps.isNotEmpty) {
+      try {
+        final querySnap = await FirebaseFirestore.instance
+            .collection('captains')
+            .where('phone', isEqualTo: cleanPhone)
+            .limit(1)
+            .get();
+        if (querySnap.docs.isNotEmpty) {
+          final data = querySnap.docs.first.data();
+          emailToAuth = data['email'] as String?;
+        }
+      } catch (e) {
+        debugPrint('[CaptainAuthService] Firestore phone lookup note: $e');
+      }
+    }
+
+    if (emailToAuth != null && Firebase.apps.isNotEmpty) {
       try {
         final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: emailToAuth,
@@ -203,6 +222,9 @@ class CaptainAuthService {
               verifiedAt: profile.verifiedAt,
               rejectionReason: profile.rejectionReason,
             );
+            debugPrint('[QUICKRIDE] CAPTAIN AUTHENTICATED = YES');
+            debugPrint('[QUICKRIDE] CAPTAIN UID EXISTS = YES (${cred.user!.uid})');
+            debugPrint('[QUICKRIDE] CAPTAIN PROFILE FOUND = YES');
           }
         }
       } on FirebaseAuthException catch (e) {
@@ -234,7 +256,7 @@ class CaptainAuthService {
       };
     }
 
-    if (captain.password != password && password.isNotEmpty) {
+    if (captain.password != password && password.isNotEmpty && !Firebase.apps.isNotEmpty) {
       return {
         'success': false,
         'message': 'Incorrect password. Please try again or reset.',
@@ -256,13 +278,15 @@ class CaptainAuthService {
   Future<CaptainAccount?> getActiveSession() async {
     final prefs = await SharedPreferences.getInstance();
     final sessionJson = prefs.getString(_sessionKey);
+    CaptainAccount? cachedAccount;
+
     if (sessionJson != null && sessionJson.isNotEmpty) {
       try {
-        return CaptainAccount.fromJson(sessionJson);
+        cachedAccount = CaptainAccount.fromJson(sessionJson);
       } catch (_) {}
     }
 
-    // Check Firebase Auth current user if session string is empty
+    // Check Firebase Auth current user if available
     try {
       final fbUser = FirebaseAuth.instance.currentUser;
       if (fbUser != null) {
@@ -273,7 +297,7 @@ class CaptainAuthService {
             name: profile.name,
             phone: profile.phone,
             email: profile.email,
-            password: '',
+            password: cachedAccount?.password ?? '',
             vehicleType: profile.vehicleType,
             vehicleNumber: profile.vehicleNumber,
             licenseNumber: profile.drivingLicenseNumber,
@@ -285,14 +309,22 @@ class CaptainAuthService {
             vehicleImageUrl: profile.vehicleImage,
             documentsSubmittedAt: profile.documentsSubmittedAt,
             verifiedAt: profile.verifiedAt,
+            rejectionReason: profile.rejectionReason,
+            drivingLicenseImageUrl: profile.drivingLicenseImageUrl,
+            vehicleDocumentImageUrl: profile.vehicleDocumentImageUrl,
           );
           await prefs.setString(_sessionKey, account.toJson());
+          debugPrint('[QUICKRIDE] CAPTAIN AUTHENTICATED = YES');
+          debugPrint('[QUICKRIDE] CAPTAIN UID EXISTS = YES (${fbUser.uid})');
+          debugPrint('[QUICKRIDE] CAPTAIN PROFILE FOUND = YES');
           return account;
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[CaptainAuthService] getActiveSession Firebase check error: $e');
+    }
 
-    return null;
+    return cachedAccount;
   }
 
   /// Save updated profile into active session and accounts store

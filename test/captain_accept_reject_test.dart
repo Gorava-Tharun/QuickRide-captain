@@ -33,7 +33,7 @@ void main() {
     expect(state.requestSecondsRemaining, 30);
 
     // 3. Test ACCEPT RIDE
-    final acceptSuccess = state.acceptCurrentRequest();
+    final acceptSuccess = await state.acceptCurrentRequest();
     expect(acceptSuccess, isTrue);
     expect(state.rideState, CaptainRideState.accepted);
     expect(state.acceptedRide, isNotNull);
@@ -45,7 +45,7 @@ void main() {
     expect(state.requestSecondsRemaining, 0);
 
     // 4. Test DUPLICATE ACCEPTANCE GUARD
-    final duplicateAccept = state.acceptCurrentRequest();
+    final duplicateAccept = await state.acceptCurrentRequest();
     expect(duplicateAccept, isFalse);
 
     // 5. Test NAVIGATE TO PICKUP
@@ -68,7 +68,7 @@ void main() {
 
     // 8. Test OFFLINE GUARD while ride is accepted
     state.triggerTestRideRequest();
-    state.acceptCurrentRequest();
+    await state.acceptCurrentRequest();
     expect(state.acceptedRide, isNotNull);
     state.toggleOnlineStatus(false);
     // Accepted ride must persist even if offline is toggled during an active trip

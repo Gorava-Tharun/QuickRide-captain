@@ -252,11 +252,24 @@ class CaptainStateService extends ChangeNotifier {
 
   void setAccount(CaptainAccount newAccount) {
     _account = newAccount;
+    debugPrint('[QUICKRIDE] CaptainStateService active account updated: ID=${newAccount.id}, Name=${newAccount.name}, Online=${newAccount.isOnline}');
+    if (_account.isOnline) {
+      _startFirestoreRequestListener();
+    } else {
+      _requestSubscription?.cancel();
+      if (!hasActiveAcceptedRide) {
+        _currentRequest = null;
+        _rideState = CaptainRideState.idle;
+      }
+    }
     notifyListeners();
   }
 
   bool toggleOnlineStatus(bool status) {
-    if (status && _account.verificationStatus != 'APPROVED') {
+    final isVerified = _account.verificationStatus == 'APPROVED' ||
+        _account.verificationStatus == 'VERIFIED' ||
+        _account.isApproved;
+    if (status && !isVerified) {
       debugPrint('[CaptainStateService] Duty blocked: Captain verification is ${_account.verificationStatus}');
       notifyListeners();
       return false;
@@ -290,15 +303,27 @@ class CaptainStateService extends ChangeNotifier {
           createdAt: DateTime.now(),
         ),
       );
-      fb.updateDutyStatus(_account.id, status);
+
+      if (status) {
+        LocationService.getCurrentLocation().then((locResult) {
+          Map<String, double>? locMap;
+          if (locResult.isPermissionGranted && locResult.position != null) {
+            locMap = {
+              'lat': locResult.position!.latitude,
+              'lng': locResult.position!.longitude,
+            };
+          }
+          fb.updateDutyStatus(_account.id, true, location: locMap);
+        });
+      } else {
+        fb.updateDutyStatus(_account.id, false);
+      }
     }
 
     if (status) {
       _startFirestoreRequestListener();
     } else {
       _requestSubscription?.cancel();
-      // Safe handling: If going offline without an active accepted ride, clear request.
-      // If a ride is already accepted, do not silently delete the ride!
       if (!hasActiveAcceptedRide) {
         _currentRequest = null;
         _rideState = CaptainRideState.idle;
@@ -368,12 +393,17 @@ class CaptainStateService extends ChangeNotifier {
     final fb = CaptainFirebaseService();
     if (!fb.isFirebaseAvailable) return;
 
+    debugPrint('[QUICKRIDE] LISTENER STARTED = YES (Captain UID: ${_account.id}, Vehicle: ${_account.vehicleType})');
+
     _requestSubscription = fb
         .streamPendingRequests(
           captainId: _account.id,
           vehicleType: _account.vehicleType,
         )
         .listen((rides) {
+      debugPrint('[QUICKRIDE] SNAPSHOT RECEIVED = YES (rides count: ${rides.length})');
+      debugPrint('[QUICKRIDE] ELIGIBLE RIDES FOUND = ${rides.length}');
+
       if (rides.isNotEmpty && _rideState == CaptainRideState.idle && isOnline) {
         final ride = rides.first;
         _currentRequest = RideRequestItem(
@@ -550,6 +580,9 @@ class CaptainStateService extends ChangeNotifier {
           vehicleDocumentImageUrl: remoteDoc.vehicleDocumentImageUrl ?? _account.vehicleDocumentImageUrl,
         );
         await CaptainAuthService().updateActiveCaptain(_account);
+        if (_account.isOnline) {
+          _startFirestoreRequestListener();
+        }
         notifyListeners();
       }
     }
