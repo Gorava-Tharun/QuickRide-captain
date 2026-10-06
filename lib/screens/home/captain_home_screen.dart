@@ -328,8 +328,8 @@ class _CaptainHomeScreenState extends State<CaptainHomeScreen> {
     return {};
   }
 
-  void _handleAcceptRide(CaptainStateService service) async {
-    final success = await service.acceptCurrentRequest();
+  void _handleAcceptRide(CaptainStateService service) {
+    final success = service.acceptCurrentRequest();
     if (!mounted) return;
 
     if (!success) {

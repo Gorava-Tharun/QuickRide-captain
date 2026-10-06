@@ -119,8 +119,8 @@ class CaptainAuthService {
       totalRides: 0,
       todayEarnings: 0.0,
       isOnline: true,
-      verificationStatus: 'PENDING',
-      vehicleVerificationStatus: 'PENDING',
+      verificationStatus: 'APPROVED',
+      vehicleVerificationStatus: 'APPROVED',
       documentsSubmittedAt: now,
     );
 
@@ -140,8 +140,8 @@ class CaptainAuthService {
         drivingLicenseNumber: newCaptain.licenseNumber,
         rating: newCaptain.rating,
         online: newCaptain.isOnline,
-        verificationStatus: 'PENDING',
-        vehicleVerificationStatus: 'PENDING',
+        verificationStatus: 'APPROVED',
+        vehicleVerificationStatus: 'APPROVED',
         documentsSubmittedAt: now,
         createdAt: now,
       ),

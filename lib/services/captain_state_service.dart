@@ -305,16 +305,16 @@ class CaptainStateService extends ChangeNotifier {
       );
 
       if (status) {
+        fb.updateDutyStatus(_account.id, true);
         LocationService.getCurrentLocation().then((locResult) {
-          Map<String, double>? locMap;
           if (locResult.isPermissionGranted && locResult.position != null) {
-            locMap = {
+            final locMap = {
               'lat': locResult.position!.latitude,
               'lng': locResult.position!.longitude,
             };
+            fb.updateDutyStatus(_account.id, true, location: locMap);
           }
-          fb.updateDutyStatus(_account.id, true, location: locMap);
-        });
+        }).catchError((_) {});
       } else {
         fb.updateDutyStatus(_account.id, false);
       }
@@ -690,33 +690,37 @@ class CaptainStateService extends ChangeNotifier {
   }
 
   /// Accept incoming ride request (Transitions to ACCEPTED via atomic Firestore check)
-  Future<bool> acceptCurrentRequest() async {
+  bool acceptCurrentRequest() {
     if (_rideState == CaptainRideState.requestReceived && _currentRequest != null) {
       final req = _currentRequest!;
       final reqId = req.id;
       _requestSecondsRemaining = 0; // stop countdown
+      _rideState = CaptainRideState.accepted;
+      _startActiveGpsTracking();
+      _startActiveRideSync(reqId);
+      notifyListeners();
 
       // Atomic Firestore acceptance
-      final success = await CaptainFirebaseService().acceptRide(
-        reqId,
-        captainId: _account.id,
-        userId: req.passengerId.isNotEmpty ? req.passengerId : req.passengerName,
-      );
-
-      if (success) {
-        _rideState = CaptainRideState.accepted;
-        _startActiveGpsTracking();
-        _startActiveRideSync(reqId);
-        notifyListeners();
-        return true;
-      } else {
-        // Concurrency: already accepted by another captain or cancelled
-        _currentRequest = null;
-        _rideState = CaptainRideState.idle;
-        _lastCancellationNotice = 'Ride was already accepted by another captain.';
-        notifyListeners();
-        return false;
+      final fb = CaptainFirebaseService();
+      if (fb.isFirebaseAvailable) {
+        fb.acceptRide(
+          reqId,
+          captainId: _account.id,
+          userId: req.passengerId.isNotEmpty ? req.passengerId : req.passengerName,
+        ).then((success) {
+          if (!success) {
+            // Concurrency: already accepted by another captain or cancelled
+            _currentRequest = null;
+            _rideState = CaptainRideState.idle;
+            _lastCancellationNotice = 'Ride was already accepted by another captain.';
+            _stopActiveGpsTracking();
+            notifyListeners();
+          }
+        }).catchError((e) {
+          debugPrint('[CaptainStateService] Error in acceptRide: $e');
+        });
       }
+      return true;
     }
     return false; // prevent duplicate acceptance
   }

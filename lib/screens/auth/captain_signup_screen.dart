@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
@@ -26,6 +26,7 @@ class _CaptainSignupScreenState extends State<CaptainSignupScreen> {
   bool _obscureConfirm = true;
   bool _isLoading = false;
   String? _errorMessage;
+  String _selectedVehicleType = 'Bike';
 
   @override
   void dispose() {
@@ -96,6 +97,7 @@ class _CaptainSignupScreenState extends State<CaptainSignupScreen> {
       phone: cleanDigits,
       email: email,
       password: password,
+      vehicleType: _selectedVehicleType,
       vehicleNumber: vehicle,
       licenseNumber: license,
     );
@@ -289,6 +291,50 @@ class _CaptainSignupScreenState extends State<CaptainSignupScreen> {
                 isPassword: true,
                 obscureText: _obscureConfirm,
                 onToggleObscure: () => setState(() => _obscureConfirm = !_obscureConfirm),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppDimensions.space16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Vehicle Type',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimaryDark,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceDark,
+                        borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
+                        border: Border.all(color: AppColors.borderDark),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _selectedVehicleType,
+                          isExpanded: true,
+                          dropdownColor: AppColors.surfaceDark,
+                          icon: const Icon(Icons.arrow_drop_down, color: AppColors.textSecondaryDark),
+                          items: const [
+                            DropdownMenuItem(value: 'Bike', child: Text('Bike', style: TextStyle(color: Colors.white))),
+                            DropdownMenuItem(value: 'Auto', child: Text('Auto', style: TextStyle(color: Colors.white))),
+                            DropdownMenuItem(value: 'Cab / Car', child: Text('Cab / Car', style: TextStyle(color: Colors.white))),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() => _selectedVehicleType = val);
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
 
               _buildTextField(
