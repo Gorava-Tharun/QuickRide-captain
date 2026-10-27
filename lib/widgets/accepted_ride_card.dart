@@ -101,14 +101,16 @@ class AcceptedRideCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppColors.surfaceElevatedDark,
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppColors.borderDark),
+                  border: Border.all(
+                    color: request.isDemo ? Colors.amber.withValues(alpha: 0.6) : AppColors.borderDark,
+                  ),
                 ),
-                child: const Text(
-                  'ACTIVE DEMO RIDE',
+                child: Text(
+                  request.isDemo ? 'DEMO ACCEPTED' : 'ACTIVE RIDE',
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondaryDark,
+                    color: request.isDemo ? Colors.amber : AppColors.textSecondaryDark,
                   ),
                 ),
               ),

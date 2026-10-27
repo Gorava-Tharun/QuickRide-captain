@@ -187,6 +187,7 @@ class RideRequestItem {
   final String vehicleType;
   final double estimatedFare;
   final String paymentMode;
+  final bool isDemo;
 
   const RideRequestItem({
     required this.id,
@@ -205,6 +206,7 @@ class RideRequestItem {
     this.vehicleType = 'QuickRide Bike',
     required this.estimatedFare,
     this.paymentMode = 'Cash / UPI',
+    this.isDemo = false,
   });
 }
 
@@ -231,12 +233,13 @@ class CompletedRideRecord {
   final double? originalFare;
   final double? customCaptainEarning;
   final double? customPlatformFee;
+  final bool isDemo;
 
   double get effectiveFinalFare => fare;
   double get effectiveOriginalFare => originalFare ?? (fare + discount);
   double get captainEarning => customCaptainEarning ?? (fare * 0.85);
   double get platformFee => customPlatformFee ?? (fare * 0.15);
-  bool get isPaid => paymentStatus?.toUpperCase() == 'PAID';
+  bool get isPaid => paymentStatus?.toUpperCase() == 'PAID' || paymentStatus?.toUpperCase() == 'PAID (DEMO)';
 
   const CompletedRideRecord({
     required this.id,
@@ -260,6 +263,7 @@ class CompletedRideRecord {
     this.originalFare,
     this.customCaptainEarning,
     this.customPlatformFee,
+    this.isDemo = false,
   });
 
   CompletedRideRecord copyWith({
@@ -284,6 +288,7 @@ class CompletedRideRecord {
     double? originalFare,
     double? customCaptainEarning,
     double? customPlatformFee,
+    bool? isDemo,
   }) {
     return CompletedRideRecord(
       id: id ?? this.id,
@@ -307,6 +312,7 @@ class CompletedRideRecord {
       originalFare: originalFare ?? this.originalFare,
       customCaptainEarning: customCaptainEarning ?? this.customCaptainEarning,
       customPlatformFee: customPlatformFee ?? this.customPlatformFee,
+      isDemo: isDemo ?? this.isDemo,
     );
   }
 
@@ -342,6 +348,7 @@ class CompletedRideRecord {
       if (originalFare != null) 'originalFare': originalFare,
       'captainEarning': captainEarning,
       'platformFee': platformFee,
+      'isDemo': isDemo,
     };
   }
 
@@ -369,6 +376,7 @@ class CompletedRideRecord {
       originalFare: (map['originalFare'] as num?)?.toDouble(),
       customCaptainEarning: (map['captainEarning'] as num?)?.toDouble(),
       customPlatformFee: (map['platformFee'] as num?)?.toDouble(),
+      isDemo: map['isDemo'] as bool? ?? false,
     );
   }
 

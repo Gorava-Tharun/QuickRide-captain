@@ -101,21 +101,44 @@ class _RideCompletedCardState extends State<RideCompletedCard> {
                 child: const Icon(Icons.check_circle_rounded, color: AppColors.onlineGreen, size: 28),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'RIDE COMPLETED',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.onlineGreen,
-                        letterSpacing: 0.5,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          record.isDemo ? 'DEMO RIDE COMPLETED' : 'RIDE COMPLETED',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: record.isDemo ? Colors.amber : AppColors.onlineGreen,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        if (record.isDemo) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.amber, width: 1),
+                            ),
+                            child: const Text(
+                              'DEMO',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.amber,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                    SizedBox(height: 2),
-                    Text(
+                    const SizedBox(height: 2),
+                    const Text(
                       'Ride completed successfully',
                       style: TextStyle(
                         fontSize: 16,
@@ -145,23 +168,25 @@ class _RideCompletedCardState extends State<RideCompletedCard> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'FINAL EARNING / FARE',
+                    Text(
+                      record.isDemo ? 'DEMO EARNING / FARE' : 'FINAL EARNING / FARE',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
-                        color: AppColors.textSecondaryDark,
+                        color: record.isDemo ? Colors.amber : AppColors.textSecondaryDark,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      record.paymentStatus == 'PAID'
-                          ? 'Payment received (${record.paymentMethod ?? 'Online'})'
-                          : 'Payment Pending • Collect Cash',
+                      record.isDemo
+                          ? 'Demo payment received (${record.paymentMethod ?? 'DEMO / CASH'})'
+                          : (record.paymentStatus == 'PAID'
+                              ? 'Payment received (${record.paymentMethod ?? 'Online'})'
+                              : 'Payment Pending • Collect Cash'),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: record.paymentStatus == 'PAID'
+                        color: (record.isDemo || record.paymentStatus == 'PAID')
                             ? AppColors.onlineGreen
                             : Colors.orange,
                       ),

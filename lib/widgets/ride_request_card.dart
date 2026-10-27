@@ -37,48 +37,64 @@ class RideRequestCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
             children: [
-              Row(
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppColors.primary,
+                      color: request.isDemo ? Colors.amber : AppColors.primary,
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: const Text(
-                      'NEW RIDE REQUEST',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.black,
-                        letterSpacing: 0.5,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (request.isDemo) ...[
+                          const Icon(Icons.bolt_rounded, size: 14, color: Colors.black),
+                          const SizedBox(width: 4),
+                        ],
+                        Text(
+                          request.isDemo ? 'DEMO REQUEST' : 'NEW RIDE REQUEST',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.black,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                     decoration: BoxDecoration(
                       color: AppColors.surfaceElevatedDark,
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: AppColors.borderDark),
+                      border: Border.all(
+                        color: request.isDemo ? Colors.amber.withValues(alpha: 0.5) : AppColors.borderDark,
+                      ),
                     ),
-                    child: const Text(
-                      'REAL-TIME',
+                    child: Text(
+                      request.isDemo ? 'DEMO MODE' : 'REAL-TIME',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
+                        color: request.isDemo ? Colors.amber : AppColors.primary,
                       ),
                     ),
                   ),
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: isUrgent
                       ? AppColors.error.withValues(alpha: 0.15)
@@ -99,7 +115,7 @@ class RideRequestCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      'Request expires in ${secondsRemaining}s',
+                      '${secondsRemaining}s remaining',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
@@ -113,54 +129,57 @@ class RideRequestCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.surfaceElevatedDark,
-                    ),
-                    child: const Icon(Icons.person_rounded, size: 26, color: AppColors.primary),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        request.passengerName,
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.textPrimaryDark),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          const Icon(Icons.star_rounded, size: 14, color: Colors.amber),
-                          const SizedBox(width: 2),
-                          Text('${request.passengerRating}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondaryDark, fontWeight: FontWeight.w600)),
-                          const SizedBox(width: 8),
-                          Text('• ${request.vehicleType}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondaryDark)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
+              Container(
+                width: 40,
+                height: 40,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.surfaceElevatedDark,
+                ),
+                child: const Icon(Icons.person_rounded, size: 24, color: AppColors.primary),
               ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      request.passengerName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: AppColors.textPrimaryDark),
+                    ),
+                    const SizedBox(height: 2),
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 4,
+                      children: [
+                        const Icon(Icons.star_rounded, size: 14, color: Colors.amber),
+                        Text('${request.passengerRating}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondaryDark, fontWeight: FontWeight.w600)),
+                        Text('• ${request.vehicleType}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondaryDark), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     '₹${request.estimatedFare.toStringAsFixed(0)}',
                     style: const TextStyle(
-                      fontSize: 24,
+                      fontSize: 22,
                       fontWeight: FontWeight.w900,
                       color: AppColors.success,
                     ),
                   ),
                   Text(
-                    'Est. ${request.distanceKm} km (${request.estimatedMinutes} mins)',
+                    'Est. ${request.distanceKm} km (${request.estimatedMinutes}m)',
                     style: const TextStyle(fontSize: 11, color: AppColors.secondary, fontWeight: FontWeight.w600),
                   ),
                 ],

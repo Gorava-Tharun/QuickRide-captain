@@ -8,6 +8,7 @@ import 'captain_auth_service.dart';
 import 'captain_firebase_service.dart';
 import 'captain_push_notification_service.dart';
 import 'captain_connectivity_service.dart';
+import 'captain_demo_service.dart';
 import 'location_service.dart';
 
 class CaptainStateService extends ChangeNotifier {
@@ -639,6 +640,22 @@ class CaptainStateService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Generate or trigger a demo ride request (using CaptainDemoService)
+  bool triggerDemoRideRequest({String? preferredVehicleType}) {
+    if (!isOnline || hasActiveAcceptedRide) {
+      return false;
+    }
+    final req = CaptainDemoService().createSampleDemoRequest(
+      vehicleType: preferredVehicleType ?? _account.vehicleType,
+    );
+    _currentRequest = req;
+    _requestSecondsRemaining = 30;
+    _rideState = CaptainRideState.requestReceived;
+    CaptainDemoService().onDemoRidePresented(req);
+    notifyListeners();
+    return true;
+  }
+
   /// Generate or trigger a mock ride request (allowed only when ONLINE and IDLE)
   bool triggerTestRideRequest() {
     if (!isOnline || hasActiveAcceptedRide) {
@@ -678,9 +695,13 @@ class CaptainStateService extends ChangeNotifier {
   /// Reject current incoming request
   void rejectCurrentRequest() {
     if (_rideState == CaptainRideState.requestReceived) {
-      final reqId = _currentRequest?.id;
-      if (reqId != null) {
-        CaptainFirebaseService().rejectRide(reqId, _account.id);
+      final req = _currentRequest;
+      if (req != null) {
+        if (req.isDemo) {
+          CaptainDemoService().onDemoRideRejected(req);
+        } else {
+          CaptainFirebaseService().rejectRide(req.id, _account.id);
+        }
       }
       _currentRequest = null;
       _requestSecondsRemaining = 0;
@@ -689,13 +710,32 @@ class CaptainStateService extends ChangeNotifier {
     }
   }
 
-  /// Accept incoming ride request (Transitions to ACCEPTED via atomic Firestore check)
+  /// Reset ride state back to idle (useful for test isolation)
+  void resetRideState() {
+    _currentRequest = null;
+    _requestSecondsRemaining = 0;
+    _rideState = CaptainRideState.idle;
+    _rideDurationSeconds = 0;
+    _lastCompletedRide = null;
+    _stopActiveGpsTracking();
+    _stopActiveRideSync();
+    notifyListeners();
+  }
+
+  /// Accept incoming ride request (Transitions to ACCEPTED via atomic Firestore check or Demo mode)
   bool acceptCurrentRequest() {
     if (_rideState == CaptainRideState.requestReceived && _currentRequest != null) {
       final req = _currentRequest!;
       final reqId = req.id;
       _requestSecondsRemaining = 0; // stop countdown
       _rideState = CaptainRideState.accepted;
+
+      if (req.isDemo) {
+        CaptainDemoService().onDemoRideAccepted(req);
+        notifyListeners();
+        return true;
+      }
+
       _startActiveGpsTracking();
       _startActiveRideSync(reqId);
       notifyListeners();
@@ -729,6 +769,9 @@ class CaptainStateService extends ChangeNotifier {
   void startNavigationToPickup() {
     if (_rideState == CaptainRideState.accepted) {
       _rideState = CaptainRideState.navigatingToPickup;
+      if (_currentRequest?.isDemo == true) {
+        CaptainDemoService().onDemoRideNavigating();
+      }
       notifyListeners();
     }
   }
@@ -740,11 +783,15 @@ class CaptainStateService extends ChangeNotifier {
          _rideState == CaptainRideState.accepted) &&
         _currentRequest != null) {
       _rideState = CaptainRideState.arrivedAtPickup;
-      CaptainFirebaseService().updateRideStatus(
-        _currentRequest!.id,
-        SharedRideStatus.arrived,
-        captainId: _account.id,
-      );
+      if (_currentRequest!.isDemo) {
+        CaptainDemoService().onDemoRideArrived();
+      } else {
+        CaptainFirebaseService().updateRideStatus(
+          _currentRequest!.id,
+          SharedRideStatus.arrived,
+          captainId: _account.id,
+        );
+      }
       notifyListeners();
       return true;
     }
@@ -757,11 +804,15 @@ class CaptainStateService extends ChangeNotifier {
     if (_rideState == CaptainRideState.arrivedAtPickup && _currentRequest != null) {
       _rideState = CaptainRideState.rideInProgress;
       _rideDurationSeconds = 0;
-      CaptainFirebaseService().updateRideStatus(
-        _currentRequest!.id,
-        SharedRideStatus.inProgress,
-        captainId: _account.id,
-      );
+      if (_currentRequest!.isDemo) {
+        CaptainDemoService().onDemoRideStarted();
+      } else {
+        CaptainFirebaseService().updateRideStatus(
+          _currentRequest!.id,
+          SharedRideStatus.inProgress,
+          captainId: _account.id,
+        );
+      }
       notifyListeners();
       return true;
     }
@@ -780,31 +831,45 @@ class CaptainStateService extends ChangeNotifier {
   /// Guard: Allowed ONLY from rideInProgress
   Future<bool> completeRide() async {
     if (_rideState == CaptainRideState.rideInProgress && _currentRequest != null) {
-      final reqId = _currentRequest!.id;
+      final req = _currentRequest!;
+      final reqId = req.id;
+      final isDemoRide = req.isDemo;
+
       _stopActiveGpsTracking();
       _stopActiveRideSync();
 
       final duration = _rideDurationSeconds > 0
           ? _rideDurationSeconds
-          : (_currentRequest!.estimatedMinutes * 60);
+          : (req.estimatedMinutes * 60);
 
       final record = CompletedRideRecord(
         id: reqId,
         rideId: reqId,
-        userId: _currentRequest!.passengerId,
-        passengerName: _currentRequest!.passengerName,
-        passengerPhone: _currentRequest!.passengerPhone,
-        pickupAddress: _currentRequest!.pickupAddress,
-        dropAddress: _currentRequest!.dropAddress,
-        vehicleType: _currentRequest!.vehicleType,
-        fare: _currentRequest!.estimatedFare,
-        distanceKm: _currentRequest!.distanceKm,
+        userId: req.passengerId,
+        passengerName: req.passengerName,
+        passengerPhone: req.passengerPhone,
+        pickupAddress: req.pickupAddress,
+        dropAddress: req.dropAddress,
+        vehicleType: req.vehicleType,
+        fare: req.estimatedFare,
+        distanceKm: req.distanceKm,
         durationSeconds: duration,
         completionTime: DateTime.now(),
+        isDemo: isDemoRide,
+        paymentStatus: isDemoRide ? 'PAID (DEMO)' : 'PAID',
+        paymentMethod: isDemoRide ? 'DEMO / CASH' : 'Online / Cash',
       );
 
       _lastCompletedRide = record;
       _rideState = CaptainRideState.completed;
+
+      if (isDemoRide) {
+        // Record demo ride and earnings in DemoService strictly separated from production
+        await CaptainDemoService().recordCompletedDemoRide(record);
+        CaptainDemoService().onDemoRideCompleted();
+        notifyListeners();
+        return true;
+      }
 
       // Update Captain cumulative stats
       _account = _account.copyWith(
@@ -849,6 +914,22 @@ class CaptainStateService extends ChangeNotifier {
             ),
           );
 
+    final targetIsDemo = target.isDemo ||
+        (_lastCompletedRide?.isDemo == true && (_lastCompletedRide!.id == rideId || _lastCompletedRide!.rideId == rideId));
+
+    if (targetIsDemo) {
+      final updated = target.copyWith(
+        isRated: true,
+        rating: stars,
+        reviewText: review,
+      );
+      if (_lastCompletedRide != null && (_lastCompletedRide!.id == rideId || _lastCompletedRide!.rideId == rideId)) {
+        _lastCompletedRide = updated;
+      }
+      notifyListeners();
+      return true;
+    }
+
     final passengerId = target.userId ?? 'user_quickride_01';
 
     // Submit to Firestore
@@ -891,6 +972,9 @@ class CaptainStateService extends ChangeNotifier {
   void finishCompletedRideAndReturnHome() {
     _stopActiveGpsTracking();
     _stopActiveRideSync();
+    if (_lastCompletedRide?.isDemo == true || CaptainDemoService().isDemoMode) {
+      CaptainDemoService().resetDemoRideLifecycle();
+    }
     _currentRequest = null;
     _rideState = CaptainRideState.idle;
     _rideDurationSeconds = 0;

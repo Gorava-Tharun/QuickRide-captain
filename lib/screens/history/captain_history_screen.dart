@@ -3,6 +3,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../models/captain_models.dart';
 import '../../services/captain_state_service.dart';
+import '../../services/captain_demo_service.dart';
 import 'captain_ride_details_screen.dart';
 
 enum HistoryFilter { all, today, thisWeek, thisMonth }
@@ -16,24 +17,42 @@ class CaptainHistoryScreen extends StatefulWidget {
 
 class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
   HistoryFilter _selectedFilter = HistoryFilter.all;
+  late bool _showDemoHistory;
+
+  @override
+  void initState() {
+    super.initState();
+    _showDemoHistory = false;
+  }
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: CaptainStateService(),
+      listenable: Listenable.merge([CaptainStateService(), CaptainDemoService()]),
       builder: (context, _) {
-        final service = CaptainStateService();
-        final filteredRides = _getFilteredRides(service);
-        final hasAnyRides = service.completedRides.isNotEmpty;
+        final stateService = CaptainStateService();
+        final demoService = CaptainDemoService();
+
+        final filteredRides = _getFilteredRides(stateService, demoService);
+        final totalCount = _showDemoHistory
+            ? demoService.demoCompletedRides.length
+            : stateService.completedRides.length;
+        final hasAnyRides = totalCount > 0;
 
         return Scaffold(
           backgroundColor: AppColors.backgroundDark,
           appBar: AppBar(
             backgroundColor: AppColors.surfaceDark,
-            title: const Text('Ride History', style: TextStyle(fontWeight: FontWeight.w800)),
+            title: const Text(
+              'Ride History',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
           ),
           body: Column(
             children: [
+              _buildModeSelector(),
+              if (_showDemoHistory) _buildDemoHistoryNotice(),
+
               // Filter Chips Header
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -45,13 +64,29 @@ class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      _buildFilterChip('All', HistoryFilter.all, service.completedRides.length),
+                      _buildFilterChip(
+                        'All',
+                        HistoryFilter.all,
+                        _showDemoHistory ? demoService.demoCompletedRides.length : stateService.completedRides.length,
+                      ),
                       const SizedBox(width: 8),
-                      _buildFilterChip('Today', HistoryFilter.today, service.todayCompletedRidesCount),
+                      _buildFilterChip(
+                        'Today',
+                        HistoryFilter.today,
+                        _showDemoHistory ? demoService.todayDemoCompletedRidesCount : stateService.todayCompletedRidesCount,
+                      ),
                       const SizedBox(width: 8),
-                      _buildFilterChip('This Week', HistoryFilter.thisWeek, service.weeklyCompletedRidesCount),
+                      _buildFilterChip(
+                        'This Week',
+                        HistoryFilter.thisWeek,
+                        _showDemoHistory ? demoService.weeklyDemoCompletedRidesCount : stateService.weeklyCompletedRidesCount,
+                      ),
                       const SizedBox(width: 8),
-                      _buildFilterChip('This Month', HistoryFilter.thisMonth, service.monthlyCompletedRidesCount),
+                      _buildFilterChip(
+                        'This Month',
+                        HistoryFilter.thisMonth,
+                        _showDemoHistory ? demoService.monthlyDemoCompletedRidesCount : stateService.monthlyCompletedRidesCount,
+                      ),
                     ],
                   ),
                 ),
@@ -60,7 +95,7 @@ class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
               // Ride List or Empty State
               Expanded(
                 child: filteredRides.isEmpty
-                    ? _buildEmptyState(context, service, hasAnyRides)
+                    ? _buildEmptyState(context, hasAnyRides)
                     : ListView.separated(
                         padding: const EdgeInsets.all(AppDimensions.space16),
                         itemCount: filteredRides.length,
@@ -78,16 +113,129 @@ class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
     );
   }
 
-  List<CompletedRideRecord> _getFilteredRides(CaptainStateService service) {
-    switch (_selectedFilter) {
-      case HistoryFilter.today:
-        return service.todayRides;
-      case HistoryFilter.thisWeek:
-        return service.weeklyRides;
-      case HistoryFilter.thisMonth:
-        return service.monthlyRides;
-      case HistoryFilter.all:
-        return service.completedRides;
+  Widget _buildModeSelector() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceDark,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
+        border: Border.all(color: AppColors.borderDark),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => setState(() => _showDemoHistory = false),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: !_showDemoHistory ? AppColors.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  'Real History',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: !_showDemoHistory ? Colors.black : AppColors.textSecondaryDark,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => setState(() => _showDemoHistory = true),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: _showDemoHistory ? Colors.amber : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                alignment: Alignment.center,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.bolt_rounded,
+                      size: 16,
+                      color: _showDemoHistory ? Colors.black : Colors.amber,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'DEMO HISTORY',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        color: _showDemoHistory ? Colors.black : Colors.amber,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDemoHistoryNotice() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.amber.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.amber.withValues(alpha: 0.6)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.info_outline_rounded, size: 16, color: Colors.amber),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'DEMO RIDE HISTORY — Stored separately from real ride history. Preserved across app restarts.',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.amber),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<CompletedRideRecord> _getFilteredRides(
+    CaptainStateService stateService,
+    CaptainDemoService demoService,
+  ) {
+    if (_showDemoHistory) {
+      switch (_selectedFilter) {
+        case HistoryFilter.today:
+          return demoService.todayDemoRides;
+        case HistoryFilter.thisWeek:
+          return demoService.weeklyDemoRides;
+        case HistoryFilter.thisMonth:
+          return demoService.monthlyDemoRides;
+        case HistoryFilter.all:
+          return demoService.demoCompletedRides;
+      }
+    } else {
+      switch (_selectedFilter) {
+        case HistoryFilter.today:
+          return stateService.todayRides;
+        case HistoryFilter.thisWeek:
+          return stateService.weeklyRides;
+        case HistoryFilter.thisMonth:
+          return stateService.monthlyRides;
+        case HistoryFilter.all:
+          return stateService.completedRides;
+      }
     }
   }
 
@@ -100,10 +248,14 @@ class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : AppColors.surfaceElevatedDark,
+          color: isSelected
+              ? (_showDemoHistory ? Colors.amber : AppColors.primary)
+              : AppColors.surfaceElevatedDark,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.borderDark,
+            color: isSelected
+                ? (_showDemoHistory ? Colors.amber : AppColors.primary)
+                : AppColors.borderDark,
           ),
         ),
         child: Row(
@@ -139,7 +291,7 @@ class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context, CaptainStateService service, bool hasAnyRides) {
+  Widget _buildEmptyState(BuildContext context, bool hasAnyRides) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppDimensions.space24),
@@ -152,17 +304,19 @@ class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: AppColors.surfaceDark,
-                border: Border.all(color: AppColors.borderDark),
+                border: Border.all(
+                  color: _showDemoHistory ? Colors.amber.withValues(alpha: 0.5) : AppColors.borderDark,
+                ),
               ),
-              child: const Icon(
-                Icons.history_rounded,
+              child: Icon(
+                _showDemoHistory ? Icons.bolt_rounded : Icons.history_rounded,
                 size: 40,
-                color: AppColors.textMutedDark,
+                color: _showDemoHistory ? Colors.amber : AppColors.textMutedDark,
               ),
             ),
             const SizedBox(height: 18),
             Text(
-              hasAnyRides ? 'No rides for this period' : 'No completed rides yet',
+              hasAnyRides ? 'No rides for this period' : (_showDemoHistory ? 'No demo rides completed yet' : 'No completed rides yet'),
               style: const TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
@@ -172,8 +326,10 @@ class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
             const SizedBox(height: 6),
             Text(
               hasAnyRides
-                  ? 'Try selecting a different filter above to view your completed trips.'
-                  : 'Rides you complete will be automatically logged and detailed here.',
+                  ? 'Try selecting a different filter above to view completed trips.'
+                  : (_showDemoHistory
+                      ? 'Complete a demo ride on the Home screen to see the verified demo record here.'
+                      : 'Rides you complete will be automatically logged and detailed here.'),
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 13, color: AppColors.textSecondaryDark),
             ),
@@ -188,7 +344,10 @@ class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
       decoration: BoxDecoration(
         color: AppColors.surfaceDark,
         borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
-        border: Border.all(color: AppColors.borderDark),
+        border: Border.all(
+          color: item.isDemo ? Colors.amber.withValues(alpha: 0.5) : AppColors.borderDark,
+          width: item.isDemo ? 1.2 : 1.0,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.2),
@@ -249,15 +408,11 @@ class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                             decoration: BoxDecoration(
-                              color: (item.paymentStatus == 'PAID'
-                                      ? AppColors.onlineGreen
-                                      : Colors.orange)
+                              color: (item.isPaid ? AppColors.onlineGreen : Colors.orange)
                                   .withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(
-                                color: (item.paymentStatus == 'PAID'
-                                        ? AppColors.onlineGreen
-                                        : Colors.orange)
+                                color: (item.isPaid ? AppColors.onlineGreen : Colors.orange)
                                     .withValues(alpha: 0.5),
                               ),
                             ),
@@ -265,23 +420,19 @@ class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  item.paymentStatus == 'PAID'
-                                      ? Icons.verified_rounded
-                                      : Icons.schedule_rounded,
+                                  item.isPaid ? Icons.verified_rounded : Icons.schedule_rounded,
                                   size: 10,
-                                  color: item.paymentStatus == 'PAID'
-                                      ? AppColors.onlineGreen
-                                      : Colors.orange,
+                                  color: item.isPaid ? AppColors.onlineGreen : Colors.orange,
                                 ),
                                 const SizedBox(width: 3),
                                 Text(
-                                  item.paymentStatus == 'PAID'
-                                      ? (item.paymentMethod != null ? 'PAID • ${item.paymentMethod}' : 'PAID')
-                                      : 'UNPAID',
+                                  item.isDemo
+                                      ? 'DEMO / CASH'
+                                      : (item.isPaid
+                                          ? (item.paymentMethod != null ? 'PAID • ${item.paymentMethod}' : 'PAID')
+                                          : 'UNPAID'),
                                   style: TextStyle(
-                                    color: item.paymentStatus == 'PAID'
-                                        ? AppColors.onlineGreen
-                                        : Colors.orange,
+                                    color: item.isPaid ? AppColors.onlineGreen : Colors.orange,
                                     fontWeight: FontWeight.w800,
                                     fontSize: 9,
                                   ),
@@ -289,6 +440,25 @@ class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
                               ],
                             ),
                           ),
+                          if (item.isDemo) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.amber, width: 0.8),
+                              ),
+                              child: const Text(
+                                'DEMO',
+                                style: TextStyle(
+                                  color: Colors.amber,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 9,
+                                ),
+                              ),
+                            ),
+                          ],
                           if (item.isRated) ...[
                             const SizedBox(width: 6),
                             Container(
@@ -323,8 +493,8 @@ class _CaptainHistoryScreenState extends State<CaptainHistoryScreen> {
                       children: [
                         Text(
                           '₹${item.captainEarning.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                            color: AppColors.success,
+                          style: TextStyle(
+                            color: item.isDemo ? Colors.amber : AppColors.success,
                             fontWeight: FontWeight.w900,
                             fontSize: 17,
                           ),

@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../services/captain_state_service.dart';
+import '../../services/captain_demo_service.dart';
 import '../../services/location_service.dart';
 import '../../models/captain_models.dart';
 import '../../widgets/ride_request_card.dart';
@@ -38,6 +39,15 @@ class _CaptainHomeScreenState extends State<CaptainHomeScreen> {
     super.initState();
     _fetchCaptainLocation();
     _startTimerTicker();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final service = CaptainStateService();
+      if (CaptainDemoService().isDemoMode &&
+          service.account.isOnline &&
+          service.rideState == CaptainRideState.idle &&
+          service.currentRequest == null) {
+        service.triggerDemoRideRequest();
+      }
+    });
     CaptainPushNotificationService().initialize(
       captainId: CaptainStateService().account.id,
       onNotificationTap: (rideId, type, [data]) {
@@ -329,6 +339,7 @@ class _CaptainHomeScreenState extends State<CaptainHomeScreen> {
   }
 
   void _handleAcceptRide(CaptainStateService service) {
+    final isDemo = service.currentRequest?.isDemo == true || CaptainDemoService().isDemoMode;
     final success = service.acceptCurrentRequest();
     if (!mounted) return;
 
@@ -358,20 +369,20 @@ class _CaptainHomeScreenState extends State<CaptainHomeScreen> {
 
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Row(
           children: [
-            Icon(Icons.check_circle_rounded, color: AppColors.onlineGreen),
-            SizedBox(width: 10),
+            const Icon(Icons.check_circle_rounded, color: AppColors.onlineGreen),
+            const SizedBox(width: 10),
             Text(
-              'Ride accepted successfully',
-              style: TextStyle(fontWeight: FontWeight.w700),
+              isDemo ? 'Demo ride accepted successfully' : 'Ride accepted successfully',
+              style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ],
         ),
         backgroundColor: AppColors.surfaceDark,
         behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 3),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -417,20 +428,24 @@ class _CaptainHomeScreenState extends State<CaptainHomeScreen> {
   }
 
   void _handleRejectRide(CaptainStateService service) {
+    final isDemo = service.currentRequest?.isDemo == true || CaptainDemoService().isDemoMode;
     service.rejectCurrentRequest();
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Row(
           children: [
-            Icon(Icons.cancel_outlined, color: AppColors.error),
-            SizedBox(width: 10),
-            Text('Ride request rejected', style: TextStyle(fontWeight: FontWeight.w700)),
+            const Icon(Icons.cancel_outlined, color: AppColors.error),
+            const SizedBox(width: 10),
+            Text(
+              isDemo ? 'Demo ride request rejected' : 'Ride request rejected',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
           ],
         ),
         backgroundColor: AppColors.surfaceDark,
         behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 2),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -599,7 +614,7 @@ class _CaptainHomeScreenState extends State<CaptainHomeScreen> {
     }
   }
 
-  void _handleTestRequest(CaptainStateService service) {
+  void _handleTestRequest(CaptainStateService service) async {
     if (!service.isOnline) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -607,6 +622,28 @@ class _CaptainHomeScreenState extends State<CaptainHomeScreen> {
           backgroundColor: AppColors.error,
         ),
       );
+      return;
+    }
+
+    if (CaptainDemoService().isDemoMode) {
+      final success = service.triggerDemoRideRequest();
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.bolt_rounded, color: Colors.amber),
+                SizedBox(width: 8),
+                Text('Demo ride request received! [DEMO MODE]', style: TextStyle(fontWeight: FontWeight.w700)),
+              ],
+            ),
+            backgroundColor: AppColors.surfaceDark,
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
       return;
     }
 
@@ -725,6 +762,7 @@ class _CaptainHomeScreenState extends State<CaptainHomeScreen> {
                       ),
                     ),
                   ],
+                  _buildDemoModeBanner(),
                   _buildHeaderCard(account),
                   const SizedBox(height: AppDimensions.space14),
                   _buildOnlineToggleCard(account.isOnline, stateService),
@@ -734,8 +772,8 @@ class _CaptainHomeScreenState extends State<CaptainHomeScreen> {
                   _buildMapCard(account.isOnline, currentRequest, rideState, stateService.lastCompletedRide),
                   const SizedBox(height: AppDimensions.space16),
 
-                  // Dev test button (visible only when online and idle)
-                  if (account.isOnline && rideState == CaptainRideState.idle && kDebugMode) ...[
+                  // Dev test button (visible when online and idle in debug or demo mode)
+                  if (account.isOnline && rideState == CaptainRideState.idle && (kDebugMode || CaptainDemoService().isDemoMode)) ...[
                     _buildTestRequestButton(stateService),
                     const SizedBox(height: AppDimensions.space14),
                   ],
@@ -752,6 +790,96 @@ class _CaptainHomeScreenState extends State<CaptainHomeScreen> {
                 ],
               ),
             ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDemoModeBanner() {
+    final demoService = CaptainDemoService();
+    return ListenableBuilder(
+      listenable: demoService,
+      builder: (context, _) {
+        final isDemo = demoService.isDemoMode;
+        return Container(
+          margin: const EdgeInsets.only(bottom: AppDimensions.space12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: isDemo ? Colors.amber.withValues(alpha: 0.15) : AppColors.surfaceDark,
+            borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
+            border: Border.all(
+              color: isDemo ? Colors.amber : AppColors.borderDark,
+              width: isDemo ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                isDemo ? Icons.bolt_rounded : Icons.info_outline_rounded,
+                color: isDemo ? Colors.amber : AppColors.textSecondaryDark,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
+                      runSpacing: 2,
+                      children: [
+                        Text(
+                          isDemo ? 'DEMO MODE ACTIVE' : 'LIVE PRODUCTION',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                            color: isDemo ? Colors.amber : AppColors.textPrimaryDark,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: isDemo ? Colors.black.withValues(alpha: 0.3) : AppColors.surfaceElevatedDark,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            isDemo ? 'VIVA / PPT' : 'FIRESTORE',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: isDemo ? Colors.amber : AppColors.textSecondaryDark,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isDemo
+                          ? 'Simulated end-to-end ride lifecycle with zero Firestore mutation'
+                          : 'Real Firebase synchronization active',
+                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondaryDark),
+                    ),
+                  ],
+                ),
+              ),
+              Transform.scale(
+                scale: 0.85,
+                child: Switch(
+                  value: isDemo,
+                  activeThumbColor: Colors.amber,
+                  activeTrackColor: Colors.amber.withValues(alpha: 0.4),
+                  inactiveThumbColor: AppColors.offlineGrey,
+                  inactiveTrackColor: AppColors.surfaceElevatedDark,
+                  onChanged: (val) {
+                    demoService.setDemoMode(val);
+                  },
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -943,26 +1071,28 @@ class _CaptainHomeScreenState extends State<CaptainHomeScreen> {
   }
 
   Widget _buildStatsRow(CaptainAccount account, CaptainStateService service) {
-    final todayEarnings = service.todayEarningsTotal;
-    final todayRides = service.todayCompletedRidesCount;
+    final demoService = CaptainDemoService();
+    final isDemo = demoService.isDemoMode;
+    final todayEarnings = isDemo ? demoService.todayDemoEarningsTotal : service.todayEarningsTotal;
+    final todayRides = isDemo ? demoService.todayDemoCompletedRidesCount : service.todayCompletedRidesCount;
 
     return Row(
       children: [
         Expanded(
           child: _buildStatCard(
-            label: "Today's Earnings",
+            label: isDemo ? "Today's Demo Earnings" : "Today's Earnings",
             value: '₹${todayEarnings.toStringAsFixed(0)}',
             icon: Icons.account_balance_wallet_rounded,
-            iconColor: AppColors.primary,
+            iconColor: isDemo ? Colors.amber : AppColors.primary,
           ),
         ),
         const SizedBox(width: AppDimensions.space10),
         Expanded(
           child: _buildStatCard(
-            label: 'Completed Rides',
+            label: isDemo ? 'Demo Completed Rides' : 'Completed Rides',
             value: '$todayRides',
             icon: Icons.check_circle_outline_rounded,
-            iconColor: AppColors.secondary,
+            iconColor: isDemo ? Colors.amber : AppColors.secondary,
           ),
         ),
         const SizedBox(width: AppDimensions.space10),
@@ -1116,31 +1246,39 @@ class _CaptainHomeScreenState extends State<CaptainHomeScreen> {
   }
 
   Widget _buildTestRequestButton(CaptainStateService service) {
+    final isDemo = CaptainDemoService().isDemoMode;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         color: AppColors.surfaceDark,
         borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
+        border: Border.all(
+          color: isDemo ? Colors.amber : AppColors.primary.withValues(alpha: 0.5),
+          width: isDemo ? 1.5 : 1,
+        ),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
           onTap: () => _handleTestRequest(service),
-          child: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.bolt_rounded, color: AppColors.primary, size: 20),
-                SizedBox(width: 8),
+                Icon(
+                  isDemo ? Icons.bolt_rounded : Icons.radar_rounded,
+                  color: isDemo ? Colors.amber : AppColors.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
                 Flexible(
                   child: Text(
-                    'Test Ride Request (Demo/Dev)',
+                    isDemo ? 'Present Demo Ride Request (Academic Demo)' : 'Test Ride Request (Demo/Dev)',
                     style: TextStyle(
-                      color: AppColors.primary,
+                      color: isDemo ? Colors.amber : AppColors.primary,
                       fontWeight: FontWeight.w800,
                       fontSize: 13,
                       letterSpacing: 0.2,
@@ -1260,6 +1398,48 @@ class _CaptainHomeScreenState extends State<CaptainHomeScreen> {
     }
 
     // 4. Default Waiting for rides (IDLE)
+    if (CaptainDemoService().isDemoMode) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(AppDimensions.space20),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceDark,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
+          border: Border.all(color: Colors.amber.withValues(alpha: 0.6), width: 1.2),
+        ),
+        child: Center(
+          child: Column(
+            children: [
+              const Icon(Icons.bolt_rounded, size: 36, color: Colors.amber),
+              const SizedBox(height: 8),
+              const Text(
+                'Demo Mode Active — Ready for Ride Request',
+                style: TextStyle(color: AppColors.textPrimaryDark, fontWeight: FontWeight.w800, fontSize: 14),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Simulate an incoming demo ride request or receive a booking from the User App.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textSecondaryDark, fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+                icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                label: const Text('Present Demo Ride Request', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                onPressed: () => _handleTestRequest(service),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(AppDimensions.space20),

@@ -17,6 +17,7 @@ void main() {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
       CaptainStateService().updateAccount(CaptainAuthService.defaultSeedCaptain);
+      CaptainStateService().resetRideState();
     });
 
     // =========================================================================
